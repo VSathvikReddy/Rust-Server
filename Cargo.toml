@@ -1,0 +1,16 @@
+[package]
+name = "rcx"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = "0.8.9"
+dotenvy = "0.15.7"
+jsonwebtoken = { version = "11.1.0", features = ["rust_crypto"] }
+rand = "0.10.3"
+serde = "1.0.229"
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "signal"] }
+tower-http = { version = "0.7.1", features = ["auth", "cors", "trace"] }
+tower_governor = "0.8.0"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }

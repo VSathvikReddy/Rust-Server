@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>rcx :: console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #0d110f;
+    --panel: #131813;
+    --panel-2: #10140f;
+    --border: #263028;
+    --border-soft: #1c241e;
+    --text: #e7ece7;
+    --muted: #7c8a7e;
+    --muted-2: #56605a;
+    --phosphor: #5fd98a;
+    --phosphor-dim: #3a7a56;
+    --amber: #e3a542;
+    --coral: #d9705f;
+  }
+
+  *{ box-sizing: border-box; }
+  html,body{ height:100%; }
+  body{
+    margin:0;
+    background:
+      radial-gradient(circle at 15% 0%, rgba(95,217,138,0.05), transparent 45%),
+      var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height:100%;
+    padding: 32px 20px 60px;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+  }
+
+  .wrap{ max-width: 980px; margin: 0 auto; }
+
+  /* ---------- header / prompt bar ---------- */
+  .masthead{
+    display:flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 22px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .brand{
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
+    font-size: 15px;
+    letter-spacing: 0.02em;
+    color: var(--text);
+  }
+  .brand span{ color: var(--phosphor); }
+  .brand small{
+    display:block;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-weight: 400;
+    font-size: 11px;
+    color: var(--muted-2);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-top: 3px;
+  }
+
+  .status-pill{
+    display:flex;
+    align-items:center;
+    gap:7px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+  .dot{
+    width:7px; height:7px; border-radius:50%;
+    background: var(--muted-2);
+    box-shadow: 0 0 0 0 rgba(0,0,0,0);
+    transition: background 0.25s ease;
+  }
+  .dot.online{ background: var(--phosphor); animation: pulse 2.2s ease-in-out infinite; }
+  .dot.error{ background: var(--coral); }
+  @keyframes pulse{
+    0%,100%{ box-shadow: 0 0 0 0 rgba(95,217,138,0.35); }
+    50%{ box-shadow: 0 0 0 4px rgba(95,217,138,0); }
+  }
+
+  /* ---------- connection bar ---------- */
+  .connect-bar{
+    display:flex;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 26px;
+  }
+  .connect-prompt{
+    display:flex; align-items:center;
+    padding: 0 14px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: var(--phosphor-dim);
+    background: var(--panel-2);
+    border-right: 1px solid var(--border-soft);
+    white-space: nowrap;
+  }
+  .connect-bar input{
+    background: transparent;
+    border: none;
+    outline: none;
+    padding: 14px 12px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13.5px;
+    color: var(--text);
+    min-width: 0;
+  }
+  .connect-bar input#ipInput{
+    flex: 1;
+  }
+  .connect-bar input#portInput{
+    width: 74px;
+    flex: none;
+    text-align: left;
+  }
+  .connect-bar .port-sep{
+    display:flex; align-items:center;
+    padding: 0 2px 0 4px;
+    color: var(--muted-2);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    user-select: none;
+  }
+  .connect-bar input::placeholder{ color: var(--muted-2); }
+  .connect-bar button{
+    border: none;
+    background: var(--phosphor-dim);
+    color: #eafff2;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0 22px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  .connect-bar button:hover{ background: var(--phosphor); color: #06120a; }
+  .connect-bar button:disabled{ background: var(--border); color: var(--muted-2); cursor: not-allowed; }
+
+  .conn-msg{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 11.5px;
+    color: var(--muted-2);
+    margin: -14px 0 24px 2px;
+    min-height: 14px;
+  }
+  .conn-msg.error{ color: var(--coral); }
+  .conn-msg.ok{ color: var(--phosphor-dim); }
+
+  /* ---------- main grid ---------- */
+  .grid{
+    display:grid;
+    grid-template-columns: 260px 1fr;
+    gap: 18px;
+  }
+  @media (max-width: 720px){
+    .grid{ grid-template-columns: 1fr; }
+  }
+
+  .panel{
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+
+  .panel-label{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted-2);
+    padding: 13px 16px 11px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  /* question list — thin index column, dot-leader fill, cool terminal feel */
+  .qlist{
+    list-style:none;
+    margin:0;
+    padding: 6px;
+    max-height: 520px;
+    overflow-y:auto;
+  }
+  .qlist li{
+    display:flex;
+    align-items:center;
+    gap: 10px;
+    padding: 9px 10px 9px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    border-left: 2px solid transparent;
+    transition: background 0.12s ease, border-color 0.12s ease;
+  }
+  .qlist li:hover{ background: var(--panel-2); }
+  .qlist li.active{ background: rgba(95,217,138,0.08); border-left-color: var(--phosphor-dim); }
+
+  .qidx{
+    flex: none;
+    width: 14px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    color: var(--muted);
+    transition: color 0.12s ease;
+  }
+  .qlist li:hover .qidx{ color: var(--text); }
+  .qlist li.active .qidx{ color: var(--phosphor); font-weight: 500; }
+
+  .qfill{
+    flex: 1;
+    height: 0;
+    border-bottom: 1px dashed var(--border-soft);
+    transition: border-color 0.12s ease;
+  }
+  .qlist li:hover .qfill{ border-color: var(--border); }
+  .qlist li.active .qfill{ border-color: rgba(95,217,138,0.25); }
+
+  .qgo{
+    flex: none;
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--phosphor-dim);
+    opacity: 0;
+    transform: translateX(-3px);
+    transition: opacity 0.12s ease, transform 0.12s ease;
+  }
+  .qlist li:hover .qgo{ opacity: 0.55; transform: translateX(0); }
+  .qlist li.active .qgo{ opacity: 1; color: var(--phosphor); transform: translateX(0); }
+
+  .qempty{
+    padding: 22px 16px;
+    font-size: 12.5px;
+    color: var(--muted-2);
+    font-family: 'IBM Plex Mono', monospace;
+    line-height: 1.6;
+    cursor: default;
+  }
+  .qempty:hover{ background: transparent; color: var(--muted-2); }
+
+  /* detail panel */
+  .detail{ padding: 18px 20px 20px; }
+  .q-statement{
+    font-size: 15px;
+    line-height: 1.55;
+    color: var(--text);
+    margin: 0 0 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border-soft);
+    min-height: 20px;
+  }
+  .q-statement.placeholder{ color: var(--muted-2); font-family:'IBM Plex Mono', monospace; font-size: 13px; }
+
+  .stmt-line{
+    display:flex;
+    align-items: baseline;
+    gap: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13.5px;
+    line-height: 1.7;
+  }
+  .stmt-line + .stmt-line{ margin-top: 2px; }
+  .stmt-label{
+    flex: none;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--phosphor-dim);
+    min-width: 50px;
+  }
+  .stmt-body{ color: var(--text); }
+  .stmt-body sup, .stmt-plain sup, .qlist li sup{
+    font-size: 0.72em;
+    line-height: 0;
+    vertical-align: super;
+    color: var(--phosphor);
+  }
+  .stmt-plain{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13.5px;
+    line-height: 1.7;
+    color: var(--text);
+  }
+
+  .field-label{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted-2);
+    margin-bottom: 8px;
+  }
+
+  textarea, .output-box{
+    width: 100%;
+    background: var(--panel-2);
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    padding: 12px 14px;
+    resize: vertical;
+  }
+  textarea{
+    min-height: 74px;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+  textarea:focus{ border-color: var(--phosphor-dim); }
+  textarea:disabled{ opacity: 0.45; }
+
+  .run-row{
+    display:flex;
+    justify-content: flex-end;
+    margin: 12px 0 22px;
+  }
+  .run-btn{
+    border: 1px solid var(--phosphor-dim);
+    background: transparent;
+    color: var(--phosphor);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 9px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .run-btn:hover:not(:disabled){ background: var(--phosphor); color: #06120a; }
+  .run-btn:disabled{ opacity: 0.35; cursor: not-allowed; }
+
+  .output-box{
+    min-height: 74px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.55;
+    color: var(--muted);
+  }
+  .output-box.ok{ color: var(--phosphor); border-color: var(--phosphor-dim); }
+  .output-box.err{ color: var(--coral); border-color: rgba(217,112,95,0.4); }
+  .output-box .err-code{
+    display:block;
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--coral);
+    opacity: 0.75;
+    margin-bottom: 6px;
+  }
+
+  ::-webkit-scrollbar{ width: 9px; height: 9px; }
+  ::-webkit-scrollbar-track{ background: transparent; }
+  ::-webkit-scrollbar-thumb{ background: var(--border); border-radius: 5px; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <div class="masthead">
+    <div class="brand">RCX<span>::</span>CONSOLE
+      <small>Reverse Coding X</small>
+    </div>
+    <div class="status-pill">
+      <span class="dot" id="statusDot"></span>
+      <span id="statusText">disconnected</span>
+    </div>
+  </div>
+
+  <div class="connect-bar">
+    <div class="connect-prompt">host&nbsp;→</div>
+    <input id="ipInput" type="text" placeholder="127.0.0.1" autocomplete="off" spellcheck="false">
+    <div class="port-sep">:</div>
+    <input id="portInput" type="text" placeholder="3000" autocomplete="off" spellcheck="false" inputmode="numeric">
+    <button id="loadBtn">Load</button>
+  </div>
+  <div class="conn-msg" id="connMsg"></div>
+
+  <div class="grid">
+    <div class="panel">
+      <div class="panel-label">Questions</div>
+      <ul class="qlist" id="qlist">
+        <li class="qempty">Enter a host and hit Load to fetch the question set from /load.</li>
+      </ul>
+    </div>
+
+    <div class="panel">
+      <div class="detail">
+        <div class="q-statement placeholder" id="qStatement">Select a question from the list.</div>
+
+        <div class="field-label">Input</div>
+        <textarea id="inputBox" placeholder="…" disabled></textarea>
+
+        <div class="run-row">
+          <button class="run-btn" id="runBtn" disabled>Run →</button>
+        </div>
+
+        <div class="field-label">Output</div>
+        <div class="output-box" id="outputBox">—</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const ipInput     = document.getElementById('ipInput');
+  const portInput   = document.getElementById('portInput');
+  const loadBtn     = document.getElementById('loadBtn');
+  const connMsg     = document.getElementById('connMsg');
+  const statusDot   = document.getElementById('statusDot');
+  const statusText  = document.getElementById('statusText');
+  const qlistEl     = document.getElementById('qlist');
+  const qStatement  = document.getElementById('qStatement');
+  const inputBox    = document.getElementById('inputBox');
+  const runBtn      = document.getElementById('runBtn');
+  const outputBox   = document.getElementById('outputBox');
+
+  let baseUrl = '';
+  let questions = [];
+  let activeIndex = null;
+
+  function normalizeHost(ipRaw, portRaw){
+    let ip = ipRaw.trim();
+    if (!ip) return '';
+    // Allow pasting a full "http://ip:port" or "ip:port" into the IP box too.
+    ip = ip.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+    let port = portRaw.trim();
+    if (!port && ip.includes(':')) {
+      // port was embedded in the ip field, e.g. "1.2.3.4:3000"
+      const parts = ip.split(':');
+      port = parts.pop();
+      ip = parts.join(':');
+    }
+    if (!port) port = '3000';
+    return `http://${ip}:${port}`;
+  }
+
+  function setStatus(state, label){
+    statusDot.className = 'dot' + (state ? ' ' + state : '');
+    statusText.textContent = label;
+  }
+
+  function setConnMsg(text, kind){
+    connMsg.textContent = text || '';
+    connMsg.className = 'conn-msg' + (kind ? ' ' + kind : '');
+  }
+
+  function resetDetail(){
+    activeIndex = null;
+    qStatement.textContent = 'Select a question from the list.';
+    qStatement.classList.add('placeholder');
+    inputBox.value = '';
+    inputBox.disabled = true;
+    runBtn.disabled = true;
+    outputBox.textContent = '—';
+    outputBox.className = 'output-box';
+  }
+
+  function renderQuestions(){
+    qlistEl.innerHTML = '';
+    if (!questions.length){
+      qlistEl.innerHTML = '<li class="qempty">Server returned zero questions.</li>';
+      return;
+    }
+    questions.forEach((_, i) => {
+      const li = document.createElement('li');
+      // Displayed label is 1-indexed for the user; `i` itself stays
+      // 0-indexed since that's what the backend's /ask/:index expects.
+      li.innerHTML = `<span class="qidx">${String(i + 1).padStart(2,'0')}</span><span class="qfill"></span><span class="qgo">→</span>`;
+      li.addEventListener('click', () => selectQuestion(i));
+      qlistEl.appendChild(li);
+    });
+  }
+
+  function selectQuestion(i){
+    activeIndex = i;
+    [...qlistEl.children].forEach((li, idx) => li.classList.toggle('active', idx === i));
+    qStatement.innerHTML = renderStatement(questions[i]);
+    qStatement.classList.remove('placeholder');
+    inputBox.disabled = false;
+    inputBox.value = '';
+    inputBox.focus();
+    runBtn.disabled = false;
+    outputBox.textContent = '—';
+    outputBox.className = 'output-box';
+  }
+
+  function escapeHtml(s){
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  // Turns "10^5" into "10<sup>5</sup>" for legible exponents. Runs on
+  // already-escaped text, so it's safe to insert as innerHTML.
+  function formatExponents(escapedText){
+    return escapedText.replace(/(\d+)\^(\d+)/g, '$1<sup>$2</sup>');
+  }
+
+  function renderStatement(text){
+    return text
+      .split('\n')
+      .map(line => {
+        const match = line.match(/^(Input|Output):\s*(.*)$/);
+        if (match){
+          return `<div class="stmt-line"><span class="stmt-label">${match[1]}</span><span class="stmt-body">${formatExponents(escapeHtml(match[2]))}</span></div>`;
+        }
+        return `<div class="stmt-plain">${formatExponents(escapeHtml(line))}</div>`;
+      })
+      .join('');
+  }
+
+  async function loadQuestions(){
+    const host = normalizeHost(ipInput.value, portInput.value);
+    if (!host){
+      setConnMsg('enter an IP address first', 'error');
+      return;
+    }
+    baseUrl = host;
+    loadBtn.disabled = true;
+    loadBtn.textContent = '…';
+    setStatus('', 'connecting');
+    setConnMsg('');
+
+    try{
+      const res = await fetch(`${baseUrl}/load`);
+      if (!res.ok) throw new Error(`server responded ${res.status}`);
+      const data = await res.json();
+      questions = Array.isArray(data) ? data : [];
+      renderQuestions();
+      resetDetail();
+      setStatus('online', `connected · ${questions.length} question${questions.length === 1 ? '' : 's'}`);
+      setConnMsg(`loaded from ${baseUrl}/load`, 'ok');
+    }catch(err){
+      questions = [];
+      qlistEl.innerHTML = '<li class="qempty">Could not reach /load. Check the host and that the server is running.</li>';
+      resetDetail();
+      setStatus('error', 'connection failed');
+      setConnMsg(err.message || 'request failed', 'error');
+    }finally{
+      loadBtn.disabled = false;
+      loadBtn.textContent = 'Load';
+    }
+  }
+
+  async function runQuestion(){
+    if (activeIndex === null) return;
+    runBtn.disabled = true;
+    runBtn.textContent = '…';
+    outputBox.textContent = 'running…';
+    outputBox.className = 'output-box';
+
+    try{
+      const res = await fetch(`${baseUrl}/ask/${activeIndex}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(inputBox.value)
+      });
+
+      const raw = await res.text();
+      let parsed;
+      try { parsed = JSON.parse(raw); } catch { parsed = raw; }
+
+      if (res.ok){
+        outputBox.textContent = typeof parsed === 'string' ? parsed : JSON.stringify(parsed);
+        outputBox.className = 'output-box ok';
+      } else {
+        const code = parsed && parsed.error ? parsed.error : `http_${res.status}`;
+        const msg = parsed && parsed.message ? parsed.message : raw;
+        outputBox.innerHTML = `<span class="err-code">${escapeHtml(code)}</span>${escapeHtml(msg)}`;
+        outputBox.className = 'output-box err';
+      }
+    }catch(err){
+      outputBox.textContent = err.message || 'request failed';
+      outputBox.className = 'output-box err';
+    }finally{
+      runBtn.disabled = false;
+      runBtn.textContent = 'Run →';
+    }
+  }
+
+  loadBtn.addEventListener('click', loadQuestions);
+  ipInput.addEventListener('keydown', e => { if (e.key === 'Enter') loadQuestions(); });
+  portInput.addEventListener('keydown', e => { if (e.key === 'Enter') loadQuestions(); });
+  runBtn.addEventListener('click', runQuestion);
+</script>
+
+</body>
+</html>
