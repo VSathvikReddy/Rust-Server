@@ -394,7 +394,8 @@
     <input id="ipInput" type="text" placeholder="127.0.0.1" autocomplete="off" spellcheck="false">
     <div class="port-sep">:</div>
     <input id="portInput" type="text" placeholder="3000" autocomplete="off" spellcheck="false" inputmode="numeric">
-    <button id="loadBtn">Load</button>
+    <button id="authBtn">Auth</button>
+    <button id="loadBtn" disabled>Load</button>
   </div>
   <div class="conn-msg" id="connMsg"></div>
 
@@ -402,7 +403,7 @@
     <div class="panel">
       <div class="panel-label">Questions</div>
       <ul class="qlist" id="qlist">
-        <li class="qempty">Enter a host and hit Load to fetch the question set from /load.</li>
+        <li class="qempty">Enter a host, authenticate, then load the question set from /load.</li>
       </ul>
     </div>
 
@@ -428,6 +429,7 @@
 <script>
   const ipInput     = document.getElementById('ipInput');
   const portInput   = document.getElementById('portInput');
+  const authBtn     = document.getElementById('authBtn');
   const loadBtn     = document.getElementById('loadBtn');
   const connMsg     = document.getElementById('connMsg');
   const statusDot   = document.getElementById('statusDot');
@@ -439,6 +441,7 @@
   const outputBox   = document.getElementById('outputBox');
 
   let baseUrl = '';
+  let token = '';
   let questions = [];
   let activeIndex = null;
 
@@ -533,6 +536,59 @@
       .join('');
   }
 
+  function clearSession(message){
+    token = '';
+    loadBtn.disabled = true;
+    questions = [];
+    qlistEl.innerHTML = '<li class="qempty">Authenticate first to fetch the question set from /load.</li>';
+    resetDetail();
+    setStatus('', 'disconnected');
+    if (message) setConnMsg(message, 'error');
+  }
+
+  async function authenticate(){
+    const host = normalizeHost(ipInput.value, portInput.value);
+    if (!host){
+      setConnMsg('enter an IP address first', 'error');
+      return;
+    }
+
+    baseUrl = host;
+    authBtn.disabled = true;
+    loadBtn.disabled = true;
+    authBtn.textContent = '…';
+    setStatus('', 'authenticating');
+    setConnMsg('');
+
+    try{
+      const res = await fetch(`${baseUrl}/auth`, { method: 'POST' });
+      const raw = await res.text();
+
+      if (!res.ok) throw new Error(`authentication failed (${res.status})`);
+
+      let parsed;
+      try { parsed = JSON.parse(raw); } catch { parsed = raw; }
+
+      token = typeof parsed === 'string'
+        ? parsed
+        : (parsed && parsed.token ? parsed.token : '');
+
+      if (!token) throw new Error('server returned no token');
+
+      loadBtn.disabled = false;
+      setStatus('online', 'authenticated');
+      setConnMsg(`authenticated with ${baseUrl}`, 'ok');
+
+      await loadQuestions();
+    }catch(err){
+      clearSession(err.message || 'authentication failed');
+      setStatus('error', 'authentication failed');
+    }finally{
+      authBtn.disabled = false;
+      authBtn.textContent = 'Auth';
+    }
+  }
+
   async function loadQuestions(){
     const host = normalizeHost(ipInput.value, portInput.value);
     if (!host){
@@ -546,13 +602,21 @@
     setConnMsg('');
 
     try{
-      const res = await fetch(`${baseUrl}/load`);
+      const res = await fetch(`${baseUrl}/load`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (res.status === 401){
+        clearSession('session expired — authenticate again');
+        throw new Error('unauthorized');
+      }
+
       if (!res.ok) throw new Error(`server responded ${res.status}`);
       const data = await res.json();
       questions = Array.isArray(data) ? data : [];
       renderQuestions();
       resetDetail();
-      setStatus('online', `connected · ${questions.length} question${questions.length === 1 ? '' : 's'}`);
+      setStatus('online', `authenticated · ${questions.length} question${questions.length === 1 ? '' : 's'}`);
       setConnMsg(`loaded from ${baseUrl}/load`, 'ok');
     }catch(err){
       questions = [];
@@ -576,7 +640,10 @@
     try{
       const res = await fetch(`${baseUrl}/ask/${activeIndex}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify(inputBox.value)
       });
 
@@ -584,8 +651,15 @@
       let parsed;
       try { parsed = JSON.parse(raw); } catch { parsed = raw; }
 
+      if (res.status === 401){
+        clearSession('session expired — authenticate again');
+        outputBox.textContent = 'unauthorized';
+        outputBox.className = 'output-box err';
+        return;
+      }
+
       if (res.ok){
-        outputBox.textContent = typeof parsed === 'string' ? parsed : JSON.stringify(parsed);
+        outputBox.textContent = typeof parsed === 'string' ? parsed : parsed.output;
         outputBox.className = 'output-box ok';
       } else {
         const code = parsed && parsed.error ? parsed.error : `http_${res.status}`;
@@ -602,9 +676,10 @@
     }
   }
 
+  authBtn.addEventListener('click', authenticate);
   loadBtn.addEventListener('click', loadQuestions);
-  ipInput.addEventListener('keydown', e => { if (e.key === 'Enter') loadQuestions(); });
-  portInput.addEventListener('keydown', e => { if (e.key === 'Enter') loadQuestions(); });
+  ipInput.addEventListener('keydown', e => { if (e.key === 'Enter') authenticate(); });
+  portInput.addEventListener('keydown', e => { if (e.key === 'Enter') authenticate(); });
   runBtn.addEventListener('click', runQuestion);
 </script>
 

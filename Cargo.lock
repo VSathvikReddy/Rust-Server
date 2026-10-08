@@ -1194,6 +1194,7 @@ dependencies = [
  "jsonwebtoken",
  "rand 0.10.3",
  "serde",
+ "serde_json",
  "tokio",
  "tower-http",
  "tower_governor",
