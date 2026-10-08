@@ -29,9 +29,15 @@ async fn server_func() -> String {
 }
 
 impl Server{
-    pub fn new(jwt_secret: &str) ->Self{
-        let keys= Arc::new(JwtKeys::load(jwt_secret));
+    pub fn new() ->Self{
+        Self{ 
+            router : Router::new()
+            .route("/request", get(server_func))
+        }
+    }
 
+    pub fn add_rate_limit(self, jwt_secret: &str, distribute_keys: bool)->Self{
+        let keys= Arc::new(JwtKeys::load(jwt_secret));
 
 
         let governor_conf = GovernorConfigBuilder::default()
@@ -40,11 +46,10 @@ impl Server{
             .key_extractor(UserIdKeyExtractor)
             .finish()
             .unwrap();
-
         
-
         let governor_limiter = governor_conf.limiter().clone();
     
+
         let interval = Duration::from_secs(60); // a separate background task to clean up
         std::thread::spawn(move || {
             loop {
@@ -55,33 +60,53 @@ impl Server{
         });
 
 
-        let router = Router::new()
-            .route("/request", get(server_func))
+
+        let rate_limited_router = self.router
             .layer(GovernorLayer::new(governor_conf))
             .layer(middleware::from_fn_with_state(keys.clone(), token_verifying_layer));
 
-        let auth_maker:Router= Router::new()
-            .route("/auth", post(token_maker))
-            .with_state(keys);
 
 
-        let cors= CorsLayer::new()
-            //.allow_origin("http://localhost:5173".parse::<axum::http::HeaderValue>().unwrap())
-            .allow_origin(Any)
-            .allow_methods([Method::GET,Method::POST])
-            .allow_headers([header::AUTHORIZATION,header::CONTENT_TYPE]);
-        Self{ 
-            router : router.merge(auth_maker)
-                .layer(cors)
-                .layer(TraceLayer::new_for_http())
+        if distribute_keys {
+            let key_distributer:Router= Router::new()
+                .route("/auth", post(token_maker))
+                .with_state(keys);
+
+            return Self {  // key destribution doesnt have limit, chicken and hen problem otherwise
+                router: rate_limited_router.merge(key_distributer)
+            }
+        }
+
+
+        Self{
+            router : rate_limited_router
         }
     }
+
+
+    pub fn build(self) ->Self{
+        let cors= CorsLayer::new()
+                //.allow_origin("http://localhost:5173".parse::<axum::http::HeaderValue>().unwrap())
+                .allow_origin(Any)
+                .allow_methods([Method::GET,Method::POST])
+                .allow_headers([header::AUTHORIZATION,header::CONTENT_TYPE]);
+
+        Self { 
+            router:self.router
+                .layer(cors)
+                .layer(TraceLayer::new_for_http()) 
+        }
+    }
+
+
+    
 
 
 
     pub async fn run(self, addr: &SocketAddr ){
         tracing::info!("listening on {}", addr);
         let listener = TcpListener::bind(addr).await.unwrap();
+
         axum::serve(listener, self.router.into_make_service_with_connect_info::<SocketAddr>())
             .with_graceful_shutdown(shutdown_signal())
             .await
