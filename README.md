@@ -105,15 +105,20 @@ curl -s -X POST http://localhost:3000/ask/1 \
 
 Indices are 0-based on the API, and the console displays them 1-based.
 
-| Index | Rule                                      |
-|-------|-------------------------------------------|
-| 0     | Reverse the string                        |
-| 1     | Sum of all integers in the input          |
-| 2     | Largest integer in the input              |
-| 3     | Number of set bits in an integer          |
-| 4     | Fibonacci number at index `n`             |
+The question set is the CodeDecode contest (Polygon contest 62114), ported to Rust from each problem's reference solution in `src/questions.rs`. Each input uses the problem's full input format, including multi-line test cases, and must respect its constraints. Input that breaks them gets an `invalid input: ...` output that names the problem.
 
-Non-numeric tokens are skipped for questions 1 and 2. Questions 3 and 4 return `invalid integer` if the input does not parse as a `u64`.
+| Index | Polygon | Name                        | Hidden rule                                                                 |
+|-------|---------|-----------------------------|-----------------------------------------------------------------------------|
+| 0     | A       | Salad with a Twist          | `s[i] = (rank(p[i]) xor rank(q[i mod m])) mod 26`, with 0 mapping to `z`     |
+| 1     | B       | Thor and The Lightning Tree | Eccentricity of each vertex (distance to the farthest vertex)               |
+| 2     | C       | Random Arrays               | `a[i] or b[i]`, with its low 30 bits reversed where `s[i] = 1`              |
+| 3     | D       | Encrypted Arrays            | `a[i] xor b[i] xor (prefix xor of s up to i)`                               |
+| 4     | G       | Treemaxxing                 | Eccentricity of each vertex (single tree, `n <= 2000`)                      |
+| 5     | H       | Drow, I Can Ob If           | YES if every letter is the sum of the previous two mod 26 (Fibonacci word)  |
+| 6     | I       | Prime Murmurs               | Number of pairs `i < j` with `a[i] + a[j]` prime                            |
+| 7     | J       | The Stolen Ledger           | Sum of squares of the digits of `x` in base `y`                             |
+| 8     | K       | The Oracle's Sequence       | Product of `i^a[i]` mod `10^9 + 7`                                          |
+| 9     | L       | The Key                     | YES if the binary form of `x` is a balanced bracket sequence (1 open, 0 close) |
 
 ## Authentication and rate limiting
 
@@ -129,7 +134,8 @@ src/
   main.rs     entry point: loads .env, tracing, config, builds and runs the server
   lib.rs      module declarations (config, server, auth)
   config.rs   ServerConfig, reads environment variables
-  server.rs   routes, question logic, rate limiting, CORS, graceful shutdown
+  server.rs   routes, rate limiting, CORS, graceful shutdown
+  questions.rs  the question statements and their hidden functions, with tests
   auth.rs     JWT keys, token verification middleware, /auth handler, rate-limit key extractor
 index.html    standalone browser console
 stress_test.py  load and abuse tester (see below)

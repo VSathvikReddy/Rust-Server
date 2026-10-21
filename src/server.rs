@@ -20,14 +20,8 @@ use tower_http::{
 use super::auth::{
     token_maker, token_verifying_layer, JwtKeys, UserIdKeyExtractor,
 };
+use super::questions::QUESTIONS;
 
-const QUESTIONS: [&str; 5] = [
-    "Reverse the following string.\nInput: hello_world\nOutput: dlrow_olleh",
-    "Return the sum of all integers in the input.\nInput: 10 20 30 40\nOutput: 100",
-    "Find the largest value.\nInput: 4 17 2 31 9\nOutput: 31",
-    "Count the number of set bits.\nInput: 29\nOutput: 4",
-    "Return the Fibonacci number at index n.\nInput: 10\nOutput: 55",
-];
 
 pub struct Server {
     router: Router,
@@ -35,7 +29,7 @@ pub struct Server {
 
 
 async fn load_questions() -> Json<Vec<&'static str>> {
-    Json(QUESTIONS.to_vec())
+    Json(QUESTIONS.iter().map(|q| q.statement).collect())
 }
 
 async fn ask_question(
@@ -55,48 +49,13 @@ async fn ask_question(
         ));
     }
 
-    let output = match index {
-        0 => input.chars().rev().collect::<String>(),
-        1 => input
-            .split_whitespace()
-            .filter_map(|x| x.parse::<i64>().ok())
-            .sum::<i64>()
-            .to_string(),
-        2 => input
-            .split_whitespace()
-            .filter_map(|x| x.parse::<i64>().ok())
-            .max()
-            .map(|x| x.to_string())
-            .unwrap_or_else(|| "no numbers".to_string()),
-        3 => input
-            .trim()
-            .parse::<u64>()
-            .map(|x| x.count_ones().to_string())
-            .unwrap_or_else(|_| "invalid integer".to_string()),
-        4 => input
-            .trim()
-            .parse::<u64>()
-            .map(fibonacci)
-            .map(|x| x.to_string())
-            .unwrap_or_else(|_| "invalid integer".to_string()),
-        _ => unreachable!(),
-    };
+    let output = (QUESTIONS[index].solve)(&input)
+        .unwrap_or_else(|err| format!("invalid input: {err}"));
 
     Ok(Json(json!({
         "question": index,
         "output": output
     })))
-}
-
-fn fibonacci(n: u64) -> u64 {
-    let mut a = 0;
-    let mut b = 1;
-
-    for _ in 0..n {
-        (a, b) = (b, a + b);
-    }
-
-    a
 }
 
 impl Server {

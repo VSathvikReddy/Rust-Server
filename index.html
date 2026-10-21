@@ -523,13 +523,20 @@
     return escapedText.replace(/(\d+)\^(\d+)/g, '$1<sup>$2</sup>');
   }
 
+  // Lines after an "Input:"/"Output:" line belong to that multi-line
+  // example and are indented under its label.
   function renderStatement(text){
+    let inExample = false;
     return text
       .split('\n')
       .map(line => {
         const match = line.match(/^(Input|Output):\s*(.*)$/);
         if (match){
+          inExample = true;
           return `<div class="stmt-line"><span class="stmt-label">${match[1]}</span><span class="stmt-body">${formatExponents(escapeHtml(match[2]))}</span></div>`;
+        }
+        if (inExample){
+          return `<div class="stmt-line"><span class="stmt-label"></span><span class="stmt-body">${formatExponents(escapeHtml(line))}</span></div>`;
         }
         return `<div class="stmt-plain">${formatExponents(escapeHtml(line))}</div>`;
       })
