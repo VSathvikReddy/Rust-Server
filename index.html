@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>rcx :: console</title>
+<title>Code::Decode</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
@@ -137,6 +137,10 @@
     font-family: 'IBM Plex Mono', monospace;
     font-size: 13px;
     user-select: none;
+  }
+  .connect-bar input#keyInput{
+    width: 170px;
+    flex: none;
   }
   .connect-bar input::placeholder{ color: var(--muted-2); }
   .connect-bar button{
@@ -380,8 +384,8 @@
 <div class="wrap">
 
   <div class="masthead">
-    <div class="brand">RCX<span>::</span>CONSOLE
-      <small>Reverse Coding X</small>
+    <div class="brand">Code<span>::</span>Deocde
+      <small>IITM X IITD</small>
     </div>
     <div class="status-pill">
       <span class="dot" id="statusDot"></span>
@@ -394,8 +398,9 @@
     <input id="ipInput" type="text" placeholder="127.0.0.1" autocomplete="off" spellcheck="false">
     <div class="port-sep">:</div>
     <input id="portInput" type="text" placeholder="3000" autocomplete="off" spellcheck="false" inputmode="numeric">
-    <button id="authBtn">Auth</button>
-    <button id="loadBtn" disabled>Load</button>
+    <div class="port-sep">|</div>
+    <input id="keyInput" type="password" placeholder="key" autocomplete="off" spellcheck="false">
+    <button id="loadBtn">Load</button>
   </div>
   <div class="conn-msg" id="connMsg"></div>
 
@@ -403,7 +408,7 @@
     <div class="panel">
       <div class="panel-label">Questions</div>
       <ul class="qlist" id="qlist">
-        <li class="qempty">Enter a host, authenticate, then load the question set from /load.</li>
+        <li class="qempty">Enter a host and key, then load the question set from /load.</li>
       </ul>
     </div>
 
@@ -429,7 +434,7 @@
 <script>
   const ipInput     = document.getElementById('ipInput');
   const portInput   = document.getElementById('portInput');
-  const authBtn     = document.getElementById('authBtn');
+  const keyInput    = document.getElementById('keyInput');
   const loadBtn     = document.getElementById('loadBtn');
   const connMsg     = document.getElementById('connMsg');
   const statusDot   = document.getElementById('statusDot');
@@ -448,15 +453,24 @@
   function normalizeHost(ipRaw, portRaw){
     let ip = ipRaw.trim();
     if (!ip) return '';
-    // Allow pasting a full "http://ip:port" or "ip:port" into the IP box too.
+    
+    // Check if the user pasted an https link
+    const isHttps = ip.startsWith('https://');
     ip = ip.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+    
     let port = portRaw.trim();
     if (!port && ip.includes(':')) {
-      // port was embedded in the ip field, e.g. "1.2.3.4:3000"
       const parts = ip.split(':');
       port = parts.pop();
       ip = parts.join(':');
     }
+    
+    // If it's a Cloudflare HTTPS link, don't force port 3000
+    if (isHttps) {
+      return port ? `https://${ip}:${port}` : `https://${ip}`;
+    }
+    
+    // Otherwise default to http and 3000 for local testing
     if (!port) port = '3000';
     return `http://${ip}:${port}`;
   }
@@ -523,13 +537,20 @@
     return escapedText.replace(/(\d+)\^(\d+)/g, '$1<sup>$2</sup>');
   }
 
+  // Lines after an "Input:"/"Output:" line belong to that multi-line
+  // example and are indented under its label.
   function renderStatement(text){
+    let inExample = false;
     return text
       .split('\n')
       .map(line => {
         const match = line.match(/^(Input|Output):\s*(.*)$/);
         if (match){
+          inExample = true;
           return `<div class="stmt-line"><span class="stmt-label">${match[1]}</span><span class="stmt-body">${formatExponents(escapeHtml(match[2]))}</span></div>`;
+        }
+        if (inExample){
+          return `<div class="stmt-line"><span class="stmt-label"></span><span class="stmt-body">${formatExponents(escapeHtml(line))}</span></div>`;
         }
         return `<div class="stmt-plain">${formatExponents(escapeHtml(line))}</div>`;
       })
@@ -538,61 +559,22 @@
 
   function clearSession(message){
     token = '';
-    loadBtn.disabled = true;
     questions = [];
-    qlistEl.innerHTML = '<li class="qempty">Authenticate first to fetch the question set from /load.</li>';
+    qlistEl.innerHTML = '<li class="qempty">Enter the key, then load the question set from /load.</li>';
     resetDetail();
     setStatus('', 'disconnected');
     if (message) setConnMsg(message, 'error');
-  }
-
-  async function authenticate(){
-    const host = normalizeHost(ipInput.value, portInput.value);
-    if (!host){
-      setConnMsg('enter an IP address first', 'error');
-      return;
-    }
-
-    baseUrl = host;
-    authBtn.disabled = true;
-    loadBtn.disabled = true;
-    authBtn.textContent = '…';
-    setStatus('', 'authenticating');
-    setConnMsg('');
-
-    try{
-      const res = await fetch(`${baseUrl}/auth`, { method: 'POST' });
-      const raw = await res.text();
-
-      if (!res.ok) throw new Error(`authentication failed (${res.status})`);
-
-      let parsed;
-      try { parsed = JSON.parse(raw); } catch { parsed = raw; }
-
-      token = typeof parsed === 'string'
-        ? parsed
-        : (parsed && parsed.token ? parsed.token : '');
-
-      if (!token) throw new Error('server returned no token');
-
-      loadBtn.disabled = false;
-      setStatus('online', 'authenticated');
-      setConnMsg(`authenticated with ${baseUrl}`, 'ok');
-
-      await loadQuestions();
-    }catch(err){
-      clearSession(err.message || 'authentication failed');
-      setStatus('error', 'authentication failed');
-    }finally{
-      authBtn.disabled = false;
-      authBtn.textContent = 'Auth';
-    }
   }
 
   async function loadQuestions(){
     const host = normalizeHost(ipInput.value, portInput.value);
     if (!host){
       setConnMsg('enter an IP address first', 'error');
+      return;
+    }
+    token = keyInput.value.trim();
+    if (!token){
+      setConnMsg('enter the key first', 'error');
       return;
     }
     baseUrl = host;
@@ -607,7 +589,7 @@
       });
 
       if (res.status === 401){
-        clearSession('session expired — authenticate again');
+        clearSession('invalid key');
         throw new Error('unauthorized');
       }
 
@@ -616,7 +598,7 @@
       questions = Array.isArray(data) ? data : [];
       renderQuestions();
       resetDetail();
-      setStatus('online', `authenticated · ${questions.length} question${questions.length === 1 ? '' : 's'}`);
+      setStatus('online', `connected · ${questions.length} question${questions.length === 1 ? '' : 's'}`);
       setConnMsg(`loaded from ${baseUrl}/load`, 'ok');
     }catch(err){
       questions = [];
@@ -652,7 +634,7 @@
       try { parsed = JSON.parse(raw); } catch { parsed = raw; }
 
       if (res.status === 401){
-        clearSession('session expired — authenticate again');
+        clearSession('invalid key');
         outputBox.textContent = 'unauthorized';
         outputBox.className = 'output-box err';
         return;
@@ -676,10 +658,9 @@
     }
   }
 
-  authBtn.addEventListener('click', authenticate);
   loadBtn.addEventListener('click', loadQuestions);
-  ipInput.addEventListener('keydown', e => { if (e.key === 'Enter') authenticate(); });
-  portInput.addEventListener('keydown', e => { if (e.key === 'Enter') authenticate(); });
+  [ipInput, portInput, keyInput].forEach(el =>
+    el.addEventListener('keydown', e => { if (e.key === 'Enter') loadQuestions(); }));
   runBtn.addEventListener('click', runQuestion);
 </script>
 

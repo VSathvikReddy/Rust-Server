@@ -10,7 +10,17 @@ use tower_governor::{
     key_extractor::KeyExtractor,
     GovernorError,
 };
-use std::{sync::Arc,time::{SystemTime,UNIX_EPOCH}};
+
+
+use std::{
+    sync::Arc,
+    time::{SystemTime,UNIX_EPOCH},
+    fs::File,
+    io
+};
+use core::time::Duration;
+
+use csv::{Writer,Reader};
 
 
 pub(crate) struct JwtKeys {
@@ -26,11 +36,26 @@ impl JwtKeys{
             decoding: DecodingKey::from_secret(secret.as_bytes()),
         }
     }
+
+    pub(crate) fn create_token(&self, mail_id: String, exp: Duration) -> Result<String,StatusCode>{
+        let now= SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        
+        let claims= Claims{
+            mail_id,
+            exp: (now + exp).as_secs() as usize
+        };
+
+        encode(&Header::default(),&claims,&self.encoding)
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+    }
 }
 
 #[derive(Serialize,Deserialize,Clone)]
 struct Claims{
-    id: u64,
+    mail_id: String,
     exp: usize,
 }
 
@@ -40,12 +65,12 @@ struct Claims{
 pub(crate) struct UserIdKeyExtractor;
 
 impl KeyExtractor for UserIdKeyExtractor {
-    type Key = u64;
+    type Key = String;
 
     fn extract<B>(&self, req: &Request<B>) -> Result<Self::Key, GovernorError> {
         req.extensions()
             .get::<Claims>()
-            .map(|claims| claims.id)
+            .map(|claims| claims.mail_id.clone())
             .ok_or(GovernorError::UnableToExtractKey)
     }
 }
@@ -81,20 +106,61 @@ pub(crate) async fn token_verifying_layer(
 }
 
 
-pub(crate) async fn token_maker(
-    State(keys): State<Arc<JwtKeys>>
-) -> Result<String,StatusCode>{
-    // exp is seconds since the epoch, which is what Validation checks against
-    let now= SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .as_secs();
+pub fn gen_passwords_file(input_file_path: &str, output_file_name: &str, jwt_secret: &str, exp: Duration) -> io::Result<()> {
+    // Open CSV reader and writer
+    let mut rdr = Reader::from_path(input_file_path)?;
+    let output_file = File::create(output_file_name)?;
+    let mut csv_writer = Writer::from_writer(output_file);
 
-    let claims= Claims{
-        id: rand::random::<u64>(),
-        exp: (now+ 3600) as usize,
-    };
+    // Read and clone headers to find the email column index dynamically
+    let headers = rdr.headers()?.clone();
+    let mail_idx = headers.iter().position(|h| {
+        let h_lower = h.to_lowercase();
+        h_lower == "mail" || h_lower == "mail_id" || h_lower == "email"
+    }).ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Could not find email column (looked for 'mail', 'mail_id', 'email')"))?;
 
-    encode(&Header::default(),&claims,&keys.encoding)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+    // Write new headers: original headers + "Password"
+    let mut new_headers: Vec<String> = headers.iter().map(|s| s.to_string()).collect();
+    new_headers.push("Password".to_string());
+    csv_writer.write_record(&new_headers)?;
+
+    let key = JwtKeys::load(jwt_secret);
+    
+    for result in rdr.records() {
+        let record = match result {
+            Ok(rec) => rec,
+            Err(e) => {
+                eprintln!("Error reading CSV record: {}", e);
+                continue; // Report and continue on read failure
+            }
+        };
+
+        // Extract the mail id from the detected column index
+        let mail_id = match record.get(mail_idx) {
+            Some(m) if !m.trim().is_empty() => m.trim(),
+            _ => {
+                eprintln!("Skipping row: missing or empty mail field");
+                continue;
+            }
+        };
+
+        // Generate the token/password
+        let password = match key.create_token(mail_id.to_string(), exp) {
+            Ok(password) => password,
+            Err(e) => {
+                eprintln!("Unable to create password for {}: {}", mail_id, e);
+                continue; // Report and continue on token generation failure
+            }
+        };
+
+        // Collect existing row fields and append the new password
+        let mut new_row: Vec<&str> = record.iter().collect();
+        new_row.push(&password);
+
+        if let Err(e) = csv_writer.write_record(&new_row) {
+            eprintln!("Error writing record for {}: {}", mail_id, e);
+        }
+    }
+
+    csv_writer.flush()
 }
